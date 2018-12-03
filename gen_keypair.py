@@ -138,7 +138,7 @@ def wif_encode(data):
 
     :param data: The bytes to WIF-encode.
     """
-    return encode_check(data, 0x80.to_bytes(1, 'big')) # str
+    return encode_check(b'\x80' + data) # str
 
 
 def wif_decode(string):
