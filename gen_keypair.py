@@ -4,6 +4,9 @@ import uuid
 import time
 import hashlib
 from math import log
+import sys
+sys.path.append('.')
+import secp256k1
 
 
 # From https://github.com/darosior/bitcoineasy/blob/master/bitcoineasy/utils.py
@@ -25,8 +28,8 @@ def hash160(bytes, bin=False):
 
     :param bin: If set to true, returns bytes.
     """
-    rip = new('ripemd160')
-    rip.update(sha256(bytes).digest())
+    rip = hashlib.new('ripemd160')
+    rip.update(hashlib.sha256(bytes).digest())
     if bin:
         return rip.digest()  # type : bytes
     else:
@@ -39,11 +42,11 @@ def double_sha256(bytes, bin=False):
 
     :param bin: If set to true, returns bytes.
     """
-    h = sha256(bytes)
+    h = hashlib.sha256(bytes)
     if bin:
-        return sha256(h.digest()).digest()  # type : bytes
+        return hashlib.sha256(h.digest()).digest()  # type : bytes
     else:
-        return sha256(h.digest()).hexdigest()  # type : str
+        return hashlib.sha256(h.digest()).hexdigest()  # type : str
 
 
 def gen_random():
@@ -51,11 +54,10 @@ def gen_random():
     Generates a random number from a CSRNG.
     """
     seconds = int(time.time())
-    entrop1 = double_sha256(seconds.to_bytes(util.base58.sizeof(seconds), 'big'))
-    entrop2 = double_sha256(os.urandom(256))
-    entrop3 = double_sha256(uuid.uuid4().bytes)
-    entropy = double_sha256(entrop1 + entrop2 + entrop3)
-    return int.from_bytes(entropy, 'big')
+    entrop1 = double_sha256(seconds.to_bytes(sizeof(seconds), 'big'), True)
+    entrop2 = double_sha256(os.urandom(256), True)
+    entrop3 = double_sha256(uuid.uuid4().bytes, True)
+    return double_sha256(entrop1 + entrop2 + entrop3, True)
 
 
 def b58encode(payload):
@@ -108,7 +110,7 @@ def encode_check(payload):
 
     :param payload: The data (as bytes) to encode.
     """
-    checksum = sha256d(payload)[:4]
+    checksum = double_sha256(payload, True)[:4]
     if payload[0] == 0x00:
         # Again, the leading 0 problem which results in nothing during int conversion
         return b58encode(b'\x00') + b58encode(payload + checksum)
@@ -124,7 +126,7 @@ def decode_check(string):
     number = b58decode(string)
     # Converting to bytes in order to verify the checksum
     payload = number.to_bytes(sizeof(number), 'big')
-    if payload and sha256d(payload[:-4])[:4] == payload[-4:]:
+    if payload and double_sha256(payload[:-4])[:4] == payload[-4:]:
         return payload[:-4]
     else:
         return None
@@ -136,14 +138,14 @@ def wif_encode(data):
 
     :param data: The bytes to WIF-encode.
     """
-    return base58check_encode(data, 0x80.to_bytes(1, 'big')) # str
+    return encode_check(data, 0x80.to_bytes(1, 'big')) # str
 
 
 def wif_decode(string):
     """
     WIF-decode the provided string (which would likely be a WIF-encoded Bitcoin private key).
     """
-    dec = base58check_decode(string)
+    dec = decode_check(string)
     compressed = string[0] == 'K' or string[0] == 'L'
     if compressed:
         return dec[:len(dec) - 1] # bytes
