@@ -146,9 +146,8 @@ def wif_decode(string):
     WIF-decode the provided string (which would likely be a WIF-encoded Bitcoin private key).
     """
     dec = decode_check(string)
-    compressed = string[0] == 'K' or string[0] == 'L'
-    if compressed:
-        return dec[:len(dec) - 1] # bytes
+    if string[0] == 'K' or string[0] == 'L':
+        return dec[1:-1] # bytes
     else:
-        return dec # bytes
+        return dec[1:] # bytes
 
