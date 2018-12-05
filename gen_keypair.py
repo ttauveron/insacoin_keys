@@ -132,13 +132,13 @@ def decode_check(string):
         return None
 
 
-def wif_encode(data, prefix):
+def wif_encode(data, prefix=b'\x80'):
     """
     WIF-encode the data (which would likely be a Bitcoin private key) provided.
 
     :param data: The bytes to WIF-encode.
     """
-    return encode_check(b'\x80' + data) # str
+    return encode_check(prefix + data) # str
 
 
 def wif_decode(string):
@@ -151,3 +151,4 @@ def wif_decode(string):
         return dec[:len(dec) - 1] # bytes
     else:
         return dec # bytes
+
