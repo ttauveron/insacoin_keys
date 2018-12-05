@@ -113,7 +113,7 @@ def encode_check(payload):
     checksum = double_sha256(payload, True)[:4]
     if payload[0] == 0x00:
         # Again, the leading 0 problem which results in nothing during int conversion
-        return b58encode(b'\x00') + b58encode(payload + checksum)
+        return b58encode(b'\x00') + b58encode(payload[1:] + checksum)
     else:
         return b58encode(payload + checksum)
 
@@ -126,13 +126,13 @@ def decode_check(string):
     number = b58decode(string)
     # Converting to bytes in order to verify the checksum
     payload = number.to_bytes(sizeof(number), 'big')
-    if payload and double_sha256(payload[:-4])[:4] == payload[-4:]:
+    if payload and double_sha256(payload[:-4], True)[:4] == payload[-4:]:
         return payload[:-4]
     else:
         return None
 
 
-def wif_encode(data):
+def wif_encode(data, prefix):
     """
     WIF-encode the data (which would likely be a Bitcoin private key) provided.
 
