@@ -5,6 +5,7 @@ import time
 import hashlib
 from math import log
 import sys
+
 sys.path.append('.')
 import secp256k1
 
@@ -138,7 +139,7 @@ def wif_encode(data, prefix=b'\x80'):
 
     :param data: The bytes to WIF-encode.
     """
-    return encode_check(prefix + data) # str
+    return encode_check(prefix + data)  # str
 
 
 def wif_decode(string):
@@ -147,7 +148,35 @@ def wif_decode(string):
     """
     dec = decode_check(string)
     if string[0] == 'K' or string[0] == 'L':
-        return dec[1:-1] # bytes
+        return dec[1:-1]  # bytes
     else:
-        return dec[1:] # bytes
+        return dec[1:]  # bytes
 
+
+def gen_privkey():
+    while True:
+        n = int.from_bytes(gen_random(), 'big')
+        if 0 < n < 115792089237316195423570985008687907852837564279074904382605163141518161494337:
+            return n.to_bytes(sizeof(n), 'big')
+
+
+def get_pubkey(privkey):
+    (x, y) = secp256k1.privtopub(privkey)
+    return b'\x04' + x.to_bytes(sizeof(x), 'big') + y.to_bytes(sizeof(y), 'big')
+
+
+def get_address(pubkey):
+    version = b'\x00'
+    hash = hash160(pubkey, bin=True)
+    return encode_check(version + hash)
+
+
+def get_keypair():
+    pk = gen_privkey()
+    addr = get_address(get_pubkey(pk))
+    print('Privkey : ', wif_encode(pk, prefix=b'\xb0'))
+    print('Address : ', addr)
+
+
+if __name__ == '__main__':
+    get_keypair()
