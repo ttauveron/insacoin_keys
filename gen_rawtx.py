@@ -4,6 +4,7 @@ sys.path.append('.')
 from gen_keypair import *
 import opcodes
 import secp256k1
+import binascii
 
 """
 ====Transaction structure====
@@ -27,7 +28,7 @@ txlocktime : 4 bytes
 To keep it simple, we'll use just a single output and a single input
 """
 
-def create_raw(prev_hash, index, in_script, value, out_script):
+def serialize(prev_hash, index, in_script, value, out_script):
     """
     Creates a serialized transaction from given values.
 
@@ -73,32 +74,31 @@ def create_raw(prev_hash, index, in_script, value, out_script):
     tx += out_script
     tx += b'\x00\x00\x00\x00' # timelock
 
-    return hex(int.from_bytes(tx, 'big'))
+    return binascii.hexlify(tx)
 
 
-def deserialize(tx):
+def decode_print(tx):
     """
-    Deserializes a tx as a dict.
+    Displays a deserialized tx (JSON-like).
 
     :param tx: A raw tx.
-    :return: A dict.
     """
-    dict = {}
-    dict['version'] = tx[:4]
-    dict['input_count'] = tx[4]
-    dict['prev_hash'] = tx[5:37]
-    dict['index'] = tx[37:41]
-    dict['scriptsig_len'] = tx[41]
-    scriptsig_len = dict['scriptsig_len']
-    dict['scriptsig'] = tx[42:43+scriptsig_len]
-    dict['sequence'] = tx[42+scriptsig_len:42+scriptsig_len+4]
-    dict['output_count'] = tx[42+scriptsig_len+4]
-    dict['value'] = tx[42+scriptsig_len+4:42+scriptsig_len+12] # aie aie aie
-    dict['output_length'] = tx[42+scriptsig_len+13]
-    output_length = dict['output_length']
-    dict['output'] = tx[42+scriptsig_len+13:42+scriptsig_len+13+output_length+1] # ouie
-    dict['locktime'] = tx[42+scriptsig_len+13+output_length+1:42+scriptsig_len+output_length+18]
-    return dict
+    print('{')
+    print(' version : ', binascii.hexlify(tx[:4]), ',')
+    print(' input_count : ', tx[4], ',')
+    print(' prev_hash : ', binascii.hexlify(tx[5:37]), ',')
+    print(' index : ', binascii.hexlify(tx[37:41]), ',')
+    scriptsig_len = tx[41]
+    print(' scriptsig_len : ', scriptsig_len, ',')
+    print(' scriptsig : ', binascii.hexlify(tx[42:42+scriptsig_len]), ',')
+    print(' sequence', binascii.hexlify(tx[42+scriptsig_len:42+scriptsig_len+4]), ',')
+    print(' output_count', tx[42+scriptsig_len+4], ',')
+    print(' value : ', binascii.hexlify(tx[42+scriptsig_len+4:42+scriptsig_len+12]), ',') # aie aie aie
+    output_length = tx[42+scriptsig_len+13]
+    print(' output_length : ', output_length, ',')
+    print(' output : ', binascii.hexlify(tx[42+scriptsig_len+14:42+scriptsig_len+13+output_length+1]), ',') # ouie
+    print(' locktime : ', binascii.hexlify(tx[42+scriptsig_len+13+output_length+1:42+scriptsig_len+output_length+18]), ',')
+    print('}')
 
 
 def parse_script(script):
@@ -118,7 +118,8 @@ def parse_script(script):
         else:
             try:
                 value = int(i, 16)
-                serialized += value.to_bytes(sizeof(value), 'big')
+                length = sizeof(value)
+                serialized += length.to_bytes(sizeof(length), 'big') + value.to_bytes(sizeof(value), 'big')
             except:
                 raise Exception('Unexpected instruction in script : {}'.format(i))
     if len(serialized) > 10000:
@@ -132,7 +133,7 @@ def der_encode(r, s):
     r_len = sizeof(r)
     s_len = sizeof(s)
     total_len = (4 + r_len + s_len)
-    return b'\x1e' + total_len.to_bytes(sizeof(total_len), 'big') + b'\x02' + r_len.to_bytes(sizeof(r_len), 'big') \
+    return b'\x30' + total_len.to_bytes(sizeof(total_len), 'big') + b'\x02' + r_len.to_bytes(sizeof(r_len), 'big') \
             + r.to_bytes(sizeof(r), 'big') + s_len.to_bytes(sizeof(s_len), 'big') + s.to_bytes(sizeof(s), 'big')
 
 def sign_tx(tx, key):
@@ -148,28 +149,31 @@ def sign_tx(tx, key):
     sig = der_encode(r, s) + b'\x01' # hash code
     return sig
 
-privkey = b"\x02\xac\x8f\xd3\x0e\x12\xf0\x1b0\x814\xc8\xb3\x11\xc6~\xbaX\xefd't\x81\x96\xfb\x9e\\\xb6\xb7\xa6\n\xa9"
-(x, y) = secp256k1.privtopub(privkey)
-pubkey = b'\x04' + x.to_bytes(sizeof(x), 'big') + y.to_bytes(sizeof(y), 'big')
-prev_txid = 0x2ac8fd30e12f01b308134c8b311c67eba58ef6427748196fb9e5cb6b7a60aa9
+
+def create_raw(privkey, prev_hash, index, in_script, value, out_script):
+    """
+    Creates a signed raw transaction
+
+    :param privkey: bytes
+    """
+    pubkey = get_pubkey(privkey)
+    in_script_len = len(in_script)
+    in_script = in_script_len.to_bytes(sizeof(in_script_len), 'big') + in_script
+    tx = serialize(prev_hash, index, in_script, value, scriptpubkey)
+    sig = sign_tx(binascii.unhexlify(tx) + b'\x01\x00\x00\x00', privkey) # + hash code type
+    sig_len = len(sig)
+    pub_len = len(pubkey)
+    scriptsig = sig_len.to_bytes(sizeof(sig_len), 'big') + sig + pub_len.to_bytes(sizeof(pub_len), 'big') + pubkey
+    print(binascii.hexlify(scriptsig))
+    return serialize(prev_hash, index, scriptsig, value, out_script)
+
+
+privkey = b'\xce\xd1 `\xf6\x84\xb0\x88\xab\xd32\x19\x0b\x10\rr \xf67h\x16/f\xb5\x9b\xd0\x01\x1e\xd8\xa5>\xf4\x01'
+prev_txid = 0x6632ae48ecfc5124e52db30103f79746adb5c0b163cbb4f11b45b780497d3cdb
 # Avant de la signer, le unlocking script (scriptsig) est rempli avec le locking script (scriptPubKey) de la precedente tx
-scriptsig = parse_script('OP_DUP OP_HASH160 969be2220ff689cd3e05f0b4def5bf2359d90530 OP_EQUALVERIFY OP_CHECKSIG')
-scriptpubkey = parse_script('OP_DUP OP_HASH160 969be2220ff689cd3e05f0b4def5bf2359d90530 OP_EQUALVERIFY OP_CHECKSIG')
-tx = create_raw(prev_txid, 0, scriptsig, 100000000, scriptpubkey)[2:] # Pour eviter le 0x
-tx = int(tx, 16) # To convert to bytes
-sig = sign_tx(tx.to_bytes(sizeof(tx), 'big') + b'\x01\x00\x00\x00', privkey) # + hash code type
-sig_hex = hex(int.from_bytes(sig + b'\x01', 'big'))[2:] # + hash code type (cette fois il fait que 1 byte)
-pubkey_hex = hex(int.from_bytes(pubkey, 'big'))[2:]
-scriptsig = parse_script(hex(len(sig + b'\x01'))[2:] + sig_hex + hex(len(pubkey))[2:] + pubkey_hex)
-tx = create_raw(prev_txid, 0, scriptsig, 1, scriptpubkey)
+scriptsig = parse_script('OP_DUP OP_HASH160 a86c52f90b0e2ae853d8e9ea4403a4b68de7a7e0 OP_EQUALVERIFY OP_CHECKSIG')
+scriptpubkey = parse_script('OP_DUP OP_HASH160 a86c52f90b0e2ae853d8e9ea4403a4b68de7a7e0 OP_EQUALVERIFY OP_CHECKSIG')
+
+tx = create_raw(privkey, prev_txid, 0, scriptsig, 99000000, scriptpubkey)
 print(tx)
-tx_dict = deserialize(int(tx[2:],16).to_bytes(sizeof(int(tx[2:], 16)), 'big'))
-print('{')
-import binascii
-for k, v in tx_dict.items():
-    print(' '+k+' : ', end='')
-    try:
-        print(binascii.hexlify(v))
-    except:
-        print(v)
-print('}')
+decode_print(binascii.unhexlify(tx))
