@@ -51,7 +51,7 @@ def create_raw(prev_hash, index, in_script, value, out_script):
     if not isinstance(in_script, bytes):
         raise Exception('in_script must be specified as bytes')
     if isinstance(value, int):
-        value = value.to_bytes(sizeof(value), 'little')
+        value = value.to_bytes(8, 'little')
     elif not isinstance(value, bytes):
         raise Exception('value must be specified as int or bytes, not {}'.format(type(value)))
     if not isinstance(out_script, bytes):
@@ -60,9 +60,7 @@ def create_raw(prev_hash, index, in_script, value, out_script):
     # check out the transaction structure at the head of this file for explanations
     tx = b'\x01\x00\x00\x00' # version
     tx += b'\x01' # input count
-    print(tx)
-    tx += prev_hash
-    print(tx)
+    tx += prev_hash[::-1]
     tx += index
     script_length = len(in_script)
     tx += script_length.to_bytes(sizeof(script_length), 'big')
@@ -72,26 +70,35 @@ def create_raw(prev_hash, index, in_script, value, out_script):
     tx += value
     script_length = len(out_script)
     tx += script_length.to_bytes(sizeof(script_length), 'big')
-    tx += b'\x00\x00\x00\x00'
+    tx += out_script
+    tx += b'\x00\x00\x00\x00' # timelock
 
     return hex(int.from_bytes(tx, 'big'))
 
 
 def deserialize(tx):
     """
-    Deserializes a tx as a JSON object.
+    Deserializes a tx as a dict.
 
     :param tx: A raw tx.
-    :return: A JSON.
+    :return: A dict.
     """
-    version = tx[:4]
-    print(version)
-    input_count = tx[4]
-    print(input_count)
-    prev_hash = tx[5:37]
-    print(prev_hash)
-    index = tx[38]
-
+    dict = {}
+    dict['version'] = tx[:4]
+    dict['input_count'] = tx[4]
+    dict['prev_hash'] = tx[5:37]
+    dict['index'] = tx[37:41]
+    dict['scriptsig_len'] = tx[41]
+    scriptsig_len = dict['scriptsig_len']
+    dict['scriptsig'] = tx[42:43+scriptsig_len]
+    dict['sequence'] = tx[42+scriptsig_len:42+scriptsig_len+4]
+    dict['output_count'] = tx[42+scriptsig_len+4]
+    dict['value'] = tx[42+scriptsig_len+4:42+scriptsig_len+12] # aie aie aie
+    dict['output_length'] = tx[42+scriptsig_len+13]
+    output_length = dict['output_length']
+    dict['output'] = tx[42+scriptsig_len+13:42+scriptsig_len+13+output_length+1] # ouie
+    dict['locktime'] = tx[42+scriptsig_len+13+output_length+1:42+scriptsig_len+output_length+18]
+    return dict
 
 
 def parse_script(script):
@@ -144,7 +151,7 @@ def sign_tx(tx, key):
 privkey = b"\x02\xac\x8f\xd3\x0e\x12\xf0\x1b0\x814\xc8\xb3\x11\xc6~\xbaX\xefd't\x81\x96\xfb\x9e\\\xb6\xb7\xa6\n\xa9"
 (x, y) = secp256k1.privtopub(privkey)
 pubkey = b'\x04' + x.to_bytes(sizeof(x), 'big') + y.to_bytes(sizeof(y), 'big')
-prev_txid = 0xe79b8048c5660e5bf1891576f47a2bea4426fa22909a900dbefb99b41900869f
+prev_txid = 0x2ac8fd30e12f01b308134c8b311c67eba58ef6427748196fb9e5cb6b7a60aa9
 # Avant de la signer, le unlocking script (scriptsig) est rempli avec le locking script (scriptPubKey) de la precedente tx
 scriptsig = parse_script('OP_DUP OP_HASH160 969be2220ff689cd3e05f0b4def5bf2359d90530 OP_EQUALVERIFY OP_CHECKSIG')
 scriptpubkey = parse_script('OP_DUP OP_HASH160 969be2220ff689cd3e05f0b4def5bf2359d90530 OP_EQUALVERIFY OP_CHECKSIG')
@@ -156,4 +163,13 @@ pubkey_hex = hex(int.from_bytes(pubkey, 'big'))[2:]
 scriptsig = parse_script(hex(len(sig + b'\x01'))[2:] + sig_hex + hex(len(pubkey))[2:] + pubkey_hex)
 tx = create_raw(prev_txid, 0, scriptsig, 1, scriptpubkey)
 print(tx)
-deserialize(tx)
+tx_dict = deserialize(int(tx[2:],16).to_bytes(sizeof(int(tx[2:], 16)), 'big'))
+print('{')
+import binascii
+for k, v in tx_dict.items():
+    print(' '+k+' : ', end='')
+    try:
+        print(binascii.hexlify(v))
+    except:
+        print(v)
+print('}')
